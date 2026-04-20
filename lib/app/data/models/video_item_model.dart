@@ -9,6 +9,7 @@ class VideoItem {
   final String? videoUrl;
   final String? format;
   final bool isLive;
+  final String idString;
 
   VideoItem({
     required this.id,
@@ -20,6 +21,7 @@ class VideoItem {
     required this.thumb,
     this.videoUrl,
     this.format,
+    required this.idString,
     this.isLive = false,
   });
 
@@ -34,9 +36,11 @@ class VideoItem {
     String? videoUrl,
     String? format,
     bool? isLive,
+    String? idString,
   }) {
     return VideoItem(
       id: id ?? this.id,
+      idString: idString ?? this.idString,
       title: title ?? this.title,
       channel: channel ?? this.channel,
       views: views ?? this.views,

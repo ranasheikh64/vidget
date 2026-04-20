@@ -8,6 +8,9 @@ import '../../../data/models/video_item_model.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/widgets/app_gradient_button.dart';
+import 'package:carousel_slider/carousel_slider.dart';
+import 'package:pod_player/pod_player.dart';
+import '../../../data/services/media_playback_service.dart';
 
 class HomeView extends GetView<HomeController> {
   const HomeView({super.key});
@@ -30,7 +33,12 @@ class HomeView extends GetView<HomeController> {
                       padding: const EdgeInsets.symmetric(horizontal: 16),
                       physics: const BouncingScrollPhysics(),
                       children: [
-                        _buildSectionHeader("Videos", onSeeAll: () {}),
+                        const SizedBox(height: 8),
+                        _buildCarouselSlider(),
+                        const SizedBox(height: 20),
+                        _buildSocialLinks(),
+                        const SizedBox(height: 24),
+                        _buildSectionHeader("Recommended for You"),
                         const SizedBox(height: 12),
                         if (controller.isLoadingVideos.value) ...[
                           _buildLoadingSkeletons(),
@@ -40,7 +48,7 @@ class HomeView extends GetView<HomeController> {
                           else ...[
                             _buildFeaturedCard(controller.filteredVideos[0]),
                             const SizedBox(height: 20),
-                            _buildSectionHeader("Results"),
+                            _buildSectionHeader("Videos"),
                             const SizedBox(height: 12),
                             ...controller.filteredVideos
                                 .skip(1)
@@ -51,14 +59,7 @@ class HomeView extends GetView<HomeController> {
                         ] else ...[
                           _buildEmptyResults(),
                         ],
-                        const SizedBox(height: 20),
-                        _buildSectionHeader(
-                          "Recently Downloaded",
-                          onSeeAll: () {},
-                        ),
-                        const SizedBox(height: 12),
-                        _buildRecentlyDownloaded(),
-                        const SizedBox(height: 20),
+                        const SizedBox(height: 40),
                       ],
                     ),
                     if (controller.isExtracting.value) _buildLoadingOverlay(),
@@ -318,119 +319,404 @@ class HomeView extends GetView<HomeController> {
     );
   }
 
-  Widget _buildFeaturedCard(VideoItem video) {
-    return Container(
-      height: 160,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(20),
-        image: DecorationImage(
-          image: CachedNetworkImageProvider(video.thumb),
-          fit: BoxFit.cover,
+  Widget _buildCarouselSlider() {
+    return Obx(() {
+      if (controller.carouselVideos.isEmpty) {
+        return Container(
+          height: 200,
+          width: double.infinity,
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.05),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: AppColors.borderSubtle),
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: AppColors.violet,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                "Loading trending videos...",
+                style: AppTextStyles.micro.copyWith(
+                  color: AppColors.textTertiary,
+                ),
+              ),
+            ],
+          ),
+        );
+      }
+
+      return CarouselSlider(
+        options: CarouselOptions(
+          height: 200,
+          autoPlay: true,
+          enlargeCenterPage: true,
+          viewportFraction: 0.9,
+          aspectRatio: 16 / 9,
+          autoPlayCurve: Curves.fastOutSlowIn,
+          enableInfiniteScroll: true,
+          autoPlayAnimationDuration: const Duration(milliseconds: 800),
         ),
-      ),
-      child: Stack(
-        children: [
-          Container(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(20),
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [Colors.transparent, Colors.black.withOpacity(0.8)],
-              ),
-            ),
+        items: controller.carouselVideos.map((video) {
+          return Builder(
+            builder: (BuildContext context) {
+              return GestureDetector(
+                onTap: () => controller.toggleInlinePlay(video),
+                child: Obx(() {
+                  final isActive =
+                      controller.activePlayingId.value == video.id.toString();
+                  final isReady =
+                      isActive &&
+                      controller.podController != null &&
+                      !controller.isPlayerLoading.value;
+
+                  return Container(
+                    width: MediaQuery.of(context).size.width,
+                    margin: const EdgeInsets.symmetric(horizontal: 0.0),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(20),
+                      color: Colors.black,
+                      image: (!isReady)
+                          ? DecorationImage(
+                              image: CachedNetworkImageProvider(video.thumb),
+                              fit: BoxFit.cover,
+                              onError: (e, s) =>
+                                  print("Carousel Image Error: $e"),
+                            )
+                          : null,
+                    ),
+                    child: Stack(
+                      children: [
+                        if (isReady)
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(20),
+                            child: PodVideoPlayer(
+                              controller: controller.podController!,
+                            ),
+                          )
+                        else ...[
+                          Container(
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(20),
+                              gradient: LinearGradient(
+                                begin: Alignment.topCenter,
+                                end: Alignment.bottomCenter,
+                                colors: [
+                                  Colors.transparent,
+                                  Colors.black.withOpacity(0.85),
+                                ],
+                              ),
+                            ),
+                          ),
+                          Center(
+                            child: Container(
+                              width: 50,
+                              height: 50,
+                              decoration: BoxDecoration(
+                                color: Colors.black.withOpacity(0.3),
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: Colors.white.withOpacity(0.2),
+                                ),
+                              ),
+                              child:
+                                  Icon(
+                                        isActive &&
+                                                controller.isPlayerLoading.value
+                                            ? LucideIcons.loader2
+                                            : LucideIcons.play,
+                                        color: Colors.white,
+                                        size: 24,
+                                      )
+                                      .animate(
+                                        target:
+                                            (isActive &&
+                                                controller
+                                                    .isPlayerLoading
+                                                    .value)
+                                            ? 1
+                                            : 0,
+                                      )
+                                      .rotate(duration: GetNumUtils(2).seconds),
+                            ),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.end,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 4,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.violet,
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: Text(
+                                    "TRENDING",
+                                    style: AppTextStyles.micro.copyWith(
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  video.title,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: AppTextStyles.body.copyWith(
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  "${video.channel} • ${video.views}",
+                                  style: AppTextStyles.micro.copyWith(
+                                    color: Colors.white70,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  );
+                }),
+              );
+            },
+          );
+        }).toList(),
+      );
+    });
+  }
+
+  Widget _buildSocialLinks() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildSectionHeader("Popular Platforms"),
+        const SizedBox(height: 12),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          physics: const BouncingScrollPhysics(),
+          child: Row(
+            children: controller.socialPlatforms
+                .map(
+                  (platform) => Padding(
+                    padding: const EdgeInsets.only(right: 20),
+                    child: GestureDetector(
+                      onTap: () =>
+                          controller.urlInput.value = platform['query']!,
+                      child: Column(
+                        children: [
+                          Container(
+                            width: 56,
+                            height: 56,
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.05),
+                              shape: BoxShape.circle,
+                              border: Border.all(color: AppColors.borderSubtle),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.2),
+                                  blurRadius: 10,
+                                  offset: const Offset(0, 4),
+                                ),
+                              ],
+                            ),
+                            child: CachedNetworkImage(
+                              imageUrl: platform['icon']!,
+                              fit: BoxFit.contain,
+                              fadeInDuration: const Duration(milliseconds: 300),
+                              placeholder: (context, url) => Container(
+                                padding: const EdgeInsets.all(8),
+                                child: const CircularProgressIndicator(
+                                  strokeWidth: 1,
+                                  color: AppColors.textTertiary,
+                                ),
+                              ),
+                              errorWidget: (context, url, error) => Center(
+                                child: Text(
+                                  platform['name']![0],
+                                  style: AppTextStyles.h3.copyWith(
+                                    color: AppColors.violet,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            platform['name']!,
+                            style: AppTextStyles.micro.copyWith(
+                              color: AppColors.textSecondary,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                )
+                .toList(),
           ),
-          Center(
-            child: GestureDetector(
-              onTap: () => controller.playVideo(video),
-              child: Container(
-                width: 44,
-                height: 44,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildFeaturedCard(VideoItem video) {
+    return Obx(() {
+      final isActive = controller.activePlayingId.value == video.id.toString();
+      final isReady =
+          isActive &&
+          controller.podController != null &&
+          !controller.isPlayerLoading.value;
+
+      return Container(
+        height: 180,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(20),
+          color: Colors.black,
+          image: !isReady
+              ? DecorationImage(
+                  image: CachedNetworkImageProvider(video.thumb),
+                  fit: BoxFit.cover,
+                )
+              : null,
+        ),
+        child: Stack(
+          children: [
+            if (isReady)
+              ClipRRect(
+                borderRadius: BorderRadius.circular(20),
+                child: PodVideoPlayer(controller: controller.podController!),
+              )
+            else ...[
+              Container(
                 decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.4),
-                  shape: BoxShape.circle,
-                  border: Border.all(color: Colors.white.withOpacity(0.2)),
-                ),
-                child: const Icon(
-                  LucideIcons.play,
-                  size: 20,
-                  color: Colors.white,
-                ),
-              ),
-            ),
-          ),
-          Positioned(
-            bottom: 12,
-            left: 12,
-            right: 12,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 4,
-                        vertical: 2,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.red,
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Text(
-                        "LIVE",
-                        style: AppTextStyles.nano.copyWith(
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 4,
-                        vertical: 2,
-                      ),
-                      decoration: BoxDecoration(
-                        color: AppColors.violet,
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Text(
-                        "4K",
-                        style: AppTextStyles.nano.copyWith(
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  video.title,
-                  style: AppTextStyles.body.copyWith(
-                    fontWeight: FontWeight.bold,
+                  borderRadius: BorderRadius.circular(20),
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Colors.transparent, Colors.black.withOpacity(0.8)],
                   ),
                 ),
-                const SizedBox(height: 4),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              ),
+              Center(
+                child: GestureDetector(
+                  onTap: () => controller.toggleInlinePlay(video),
+                  child: Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.4),
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white.withOpacity(0.2)),
+                    ),
+                    child:
+                        Icon(
+                              isActive && controller.isPlayerLoading.value
+                                  ? LucideIcons.loader2
+                                  : LucideIcons.play,
+                              size: 20,
+                              color: Colors.white,
+                            )
+                            .animate(
+                              target:
+                                  (isActive && controller.isPlayerLoading.value)
+                                  ? 1
+                                  : 0,
+                            )
+                            .rotate(duration: GetNumUtils(2).seconds),
+                  ),
+                ),
+              ),
+              Positioned(
+                bottom: 12,
+                left: 12,
+                right: 12,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 4,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.red,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            "LIVE",
+                            style: AppTextStyles.nano.copyWith(
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 4,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: AppColors.violet,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            "4K",
+                            style: AppTextStyles.nano.copyWith(
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
                     Text(
-                      "${video.channel} • ${video.views} views",
-                      style: AppTextStyles.micro.copyWith(
-                        color: AppColors.textSecondary,
+                      video.title,
+                      style: AppTextStyles.body.copyWith(
+                        fontWeight: FontWeight.bold,
                       ),
                     ),
-                    Obx(
-                      () => _buildDownloadButton(video),
+                    const SizedBox(height: 4),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          "${video.channel} • ${video.views} views",
+                          style: AppTextStyles.micro.copyWith(
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                        Obx(() => _buildDownloadButton(video)),
+                      ],
                     ),
                   ],
                 ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
+              ),
+            ],
+          ],
+        ),
+      );
+    });
   }
 
   Widget _buildVideoListTile(VideoItem video) {
@@ -439,54 +725,77 @@ class HomeView extends GetView<HomeController> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Stack(
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: CachedNetworkImage(
-                  imageUrl: video.thumb,
-                  width: 100,
-                  height: 64,
-                  fit: BoxFit.cover,
+          GestureDetector(
+            onTap: () => controller.toggleInlinePlay(video),
+            child: Stack(
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: Obx(() {
+                    final isActive =
+                        controller.activePlayingId.value == video.id.toString();
+                    final isReady =
+                        isActive &&
+                        controller.podController != null &&
+                        !controller.isPlayerLoading.value;
+
+                    if (isReady && controller.podController != null) {
+                      return SizedBox(
+                        width: 100,
+                        height: 64,
+                        child: PodVideoPlayer(
+                          controller: controller.podController!,
+                        ),
+                      );
+                    }
+
+                    return CachedNetworkImage(
+                      imageUrl: video.thumb,
+                      width: 100,
+                      height: 64,
+                      fit: BoxFit.cover,
+                      fadeInDuration: const Duration(milliseconds: 300),
+                      placeholder: (context, url) => Container(
+                        color: Colors.white.withValues(alpha: 0.05),
+                      ),
+                      errorWidget: (context, url, error) => Container(
+                        color: Colors.white.withValues(alpha: 0.05),
+                        child: const Icon(
+                          LucideIcons.image,
+                          size: 20,
+                          color: AppColors.textTertiary,
+                        ),
+                      ),
+                    );
+                  }),
                 ),
-              ),
-              Positioned(
-                bottom: 4,
-                right: 4,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 4,
-                    vertical: 1,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.7),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: Text(video.duration, style: AppTextStyles.nano),
-                ),
-              ),
-              Positioned.fill(
-                child: Center(
-                  child: GestureDetector(
-                    onTap: () => controller.playVideo(video),
+                Obx(() {
+                  final isActive =
+                      controller.activePlayingId.value == video.id.toString();
+                  if (isActive &&
+                      !controller.isPlayerLoading.value &&
+                      controller.podController != null) {
+                    return const SizedBox.shrink();
+                  }
+                  return Positioned(
+                    bottom: 4,
+                    right: 4,
                     child: Container(
-                      width: 24,
-                      height: 24,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 4,
+                        vertical: 1,
+                      ),
                       decoration: BoxDecoration(
-                        color: Colors.black.withOpacity(0.4),
-                        shape: BoxShape.circle,
-                        border: Border.all(color: Colors.white.withOpacity(0.2)),
+                        color: Colors.black.withOpacity(0.7),
+                        borderRadius: BorderRadius.circular(4),
                       ),
-                      child: const Icon(
-                        LucideIcons.play,
-                        size: 10,
-                        color: Colors.white,
-                      ),
+                      child: Text(video.duration, style: AppTextStyles.nano),
                     ),
-                  ),
-                ),
-              ),
-            ],
+                  );
+                }),
+                _buildThumbnailDurationOverlay(video),
+              ],
+            ),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -553,10 +862,74 @@ class HomeView extends GetView<HomeController> {
             ),
           ),
           const SizedBox(width: 8),
-          Obx(
-            () => _buildDownloadButton(video, isCircle: true),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Obx(() => _buildInlinePlayButton(video)),
+              const SizedBox(width: 8),
+              Obx(() => _buildDownloadButton(video, isCircle: true)),
+            ],
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildThumbnailDurationOverlay(VideoItem video) {
+    return Obx(() {
+      final isActive = controller.activePlayingId.value == video.id.toString();
+      if (isActive &&
+          !controller.isPlayerLoading.value &&
+          controller.podController != null) {
+        return const SizedBox.shrink();
+      }
+      return Positioned(
+        bottom: 4,
+        right: 4,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+          decoration: BoxDecoration(
+            color: Colors.black.withOpacity(0.7),
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: Text(video.duration, style: AppTextStyles.nano),
+        ),
+      );
+    });
+  }
+
+  Widget _buildInlinePlayButton(VideoItem video) {
+    final isActive = controller.activePlayingId.value == video.id.toString();
+    final isLoading = isActive && controller.isPlayerLoading.value;
+    final isPlaying =
+        isActive &&
+        controller.podController != null &&
+        controller.podController!.isVideoPlaying;
+
+    return GestureDetector(
+      onTap: () => controller.toggleInlinePlay(video),
+      child: Container(
+        width: 32,
+        height: 32,
+        decoration: BoxDecoration(
+          color: isActive
+              ? AppColors.violet.withOpacity(0.15)
+              : Colors.white.withOpacity(0.05),
+          shape: BoxShape.circle,
+        ),
+        child: isLoading
+            ? const Padding(
+                padding: EdgeInsets.all(8.0),
+                child: CircularProgressIndicator(
+                  strokeWidth: 1.5,
+                  color: AppColors.violet,
+                ),
+              )
+            : Icon(
+                isPlaying ? LucideIcons.pause : LucideIcons.play,
+                size: 14,
+                color: isActive ? AppColors.violet : AppColors.textPrimary,
+              ),
       ),
     );
   }
@@ -762,41 +1135,50 @@ class HomeView extends GetView<HomeController> {
         final item = controller.filteredVideos[index];
         return GestureDetector(
           onTap: () => controller.playVideo(item),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: Stack(
-              children: [
-                CachedNetworkImage(
-                  imageUrl: item.thumb,
-                  fit: BoxFit.cover,
-                  width: double.infinity,
-                  height: double.infinity,
-                ),
-                Positioned.fill(
-                  child: Container(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [Colors.transparent, Colors.black.withOpacity(0.5)],
-                      ),
+          child:
+              ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: Stack(
+                      children: [
+                        CachedNetworkImage(
+                          imageUrl: item.thumb,
+                          fit: BoxFit.cover,
+                          width: double.infinity,
+                          height: double.infinity,
+                        ),
+                        Positioned.fill(
+                          child: Container(
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.topCenter,
+                                end: Alignment.bottomCenter,
+                                colors: [
+                                  Colors.transparent,
+                                  Colors.black.withOpacity(0.5),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                        Positioned(
+                          bottom: 8,
+                          left: 8,
+                          right: 8,
+                          child: Text(
+                            item.title,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: AppTextStyles.micro.copyWith(
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                  ),
-                ),
-                Positioned(
-                  bottom: 8,
-                  left: 8,
-                  right: 8,
-                  child: Text(
-                    item.title,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: AppTextStyles.micro.copyWith(fontWeight: FontWeight.bold),
-                  ),
-                ),
-              ],
-            ),
-          ).animate().fade(duration: 300.ms, delay: (index * 50).ms).slideY(begin: 0.1),
+                  )
+                  .animate()
+                  .fade(duration: 300.ms, delay: (index * 50).ms)
+                  .slideY(begin: 0.1),
         );
       },
     );
@@ -813,7 +1195,9 @@ class HomeView extends GetView<HomeController> {
           width: 32,
           height: 32,
           decoration: BoxDecoration(
-            color: isDownloading ? AppColors.violet.withOpacity(0.1) : AppColors.bgCard,
+            color: isDownloading
+                ? AppColors.violet.withOpacity(0.1)
+                : AppColors.bgCard,
             shape: BoxShape.circle,
             border: Border.all(color: AppColors.violet.withOpacity(0.2)),
           ),
@@ -825,17 +1209,21 @@ class HomeView extends GetView<HomeController> {
                   width: 24,
                   height: 24,
                   child: CircularProgressIndicator(
-                    value: progress / 100,
+                    value: progress <= 0 ? null : progress / 100,
                     strokeWidth: 2,
                     color: AppColors.violetLight,
                     backgroundColor: Colors.white10,
                   ),
                 ),
               Icon(
-                isDownloading ? LucideIcons.loader2 : LucideIcons.download,
-                size: 14,
-                color: isDownloading ? AppColors.violetLight : Colors.white70,
-              ).animate(target: isDownloading ? 1 : 0).rotate(duration: GetNumUtils(2).seconds),
+                    isDownloading ? LucideIcons.loader2 : LucideIcons.download,
+                    size: 14,
+                    color: isDownloading
+                        ? AppColors.violetLight
+                        : Colors.white70,
+                  )
+                  .animate(target: isDownloading ? 1 : 0)
+                  .rotate(duration: GetNumUtils(2).seconds),
             ],
           ),
         ),
@@ -851,22 +1239,34 @@ class HomeView extends GetView<HomeController> {
         mainAxisSize: MainAxisSize.min,
         children: [
           if (isDownloading) ...[
-             SizedBox(
+            SizedBox(
               width: 12,
               height: 12,
-              child: CircularProgressIndicator(
-                value: progress / 100,
-                strokeWidth: 2,
-                color: Colors.white,
-              ),
+              child:
+                  CircularProgressIndicator(
+                        value: progress <= 0 ? null : progress / 100,
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      )
+                      .animate(onPlay: (c) => c.repeat())
+                      .shimmer(duration: GetNumUtils(1).seconds),
             ),
             const SizedBox(width: 8),
-            Text("${progress.toInt()}%", style: AppTextStyles.nano.copyWith(fontWeight: FontWeight.bold)),
+            Text(
+              progress > 0 ? "${progress.toInt()}%" : "Wait",
+              style: AppTextStyles.caption.copyWith(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
           ] else ...[
             const Icon(LucideIcons.download, size: 10, color: Colors.white),
             const SizedBox(width: 6),
-            Text("Download", style: AppTextStyles.micro.copyWith(fontWeight: FontWeight.bold)),
-          ]
+            Text(
+              "Download",
+              style: AppTextStyles.micro.copyWith(fontWeight: FontWeight.bold),
+            ),
+          ],
         ],
       ),
     );

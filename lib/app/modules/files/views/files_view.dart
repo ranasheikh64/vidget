@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:lucide_icons/lucide_icons.dart';
@@ -22,6 +24,7 @@ class FilesView extends GetView<FilesController> {
             children: [
               _buildHeader(),
               _buildCategoryCards(),
+              _buildHeroBanner(),
               _buildSearchBar(),
               Obx(() => controller.isScanning 
                 ? const LinearProgressIndicator(
@@ -170,6 +173,141 @@ class FilesView extends GetView<FilesController> {
     });
   }
 
+  Widget _buildHeroBanner() {
+    return Obx(() {
+      if (controller.featuredFiles.isEmpty) return const SizedBox.shrink();
+      
+      return Container(
+        height: 180,
+        margin: const EdgeInsets.symmetric(vertical: 16),
+        child: ListView.builder(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          scrollDirection: Axis.horizontal,
+          physics: const BouncingScrollPhysics(),
+          itemCount: controller.featuredFiles.length,
+          itemBuilder: (context, index) {
+            final file = controller.featuredFiles[index];
+            return GestureDetector(
+              onTap: () => controller.playFile(file),
+              child: Container(
+                width: 280,
+                margin: const EdgeInsets.only(right: 16),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(24),
+                  image: file.thumbnailPath != null
+                      ? DecorationImage(
+                          image: FileImage(File(file.thumbnailPath!)),
+                          fit: BoxFit.cover,
+                          colorFilter: ColorFilter.mode(
+                            Colors.black.withOpacity(0.3),
+                            BlendMode.darken,
+                          ),
+                        )
+                      : null,
+                  color: AppColors.bgCard,
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppColors.violet.withOpacity(0.2),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: Stack(
+                  children: [
+                    if (file.thumbnailPath == null)
+                      Center(
+                        child: Icon(
+                          file.category == FileCategory.videos
+                              ? LucideIcons.video
+                              : LucideIcons.image,
+                          size: 40,
+                          color: AppColors.violet.withOpacity(0.5),
+                        ),
+                      ),
+                    Positioned(
+                      bottom: 0,
+                      left: 0,
+                      right: 0,
+                      child: Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [
+                              Colors.transparent,
+                              Colors.black.withOpacity(0.8),
+                            ],
+                          ),
+                          borderRadius: const BorderRadius.only(
+                            bottomLeft: Radius.circular(24),
+                            bottomRight: Radius.circular(24),
+                          ),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              file.name,
+                              style: AppTextStyles.body.copyWith(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            Text(
+                              file.sizeStr,
+                              style: AppTextStyles.nano.copyWith(
+                                color: Colors.white.withOpacity(0.7),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      top: 12,
+                      right: 12,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withOpacity(0.6),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              file.category == FileCategory.videos
+                                  ? LucideIcons.play
+                                  : LucideIcons.image,
+                              size: 10,
+                              color: Colors.white,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              file.category == FileCategory.videos ? "VIDEO" : "IMAGE",
+                              style: AppTextStyles.nano.copyWith(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        ),
+      );
+    });
+  }
+
   Widget _buildSearchBar() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -236,7 +374,7 @@ class FilesView extends GetView<FilesController> {
             crossAxisCount: 2,
             crossAxisSpacing: 12,
             mainAxisSpacing: 12,
-            childAspectRatio: 1.1,
+            childAspectRatio: 0.85,
           ),
           itemCount: files.length,
           itemBuilder: (context, index) => _buildFileGridCard(files[index]),
@@ -272,10 +410,15 @@ class FilesView extends GetView<FilesController> {
                 const SizedBox(width: 12),
               ],
               Container(
-                width: 44, height: 44,
-                decoration: BoxDecoration(color: Colors.white.withOpacity(0.05), borderRadius: BorderRadius.circular(12)),
-                alignment: Alignment.center,
-                child: Text(file.thumb, style: const TextStyle(fontSize: 22)),
+                width: 52, height: 52,
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.05),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(14),
+                  child: _buildThumbnail(file),
+                ),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -322,18 +465,32 @@ class FilesView extends GetView<FilesController> {
           padding: const EdgeInsets.all(12),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.center,
-            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Text(file.thumb, style: const TextStyle(fontSize: 40)),
-              const SizedBox(height: 12),
-              Text(
-                file.name,
-                style: AppTextStyles.micro.copyWith(fontWeight: FontWeight.bold),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.center,
+              Expanded(
+                child: Container(
+                  width: double.infinity,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.05),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(16),
+                    child: _buildThumbnail(file),
+                  ),
+                ),
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: 8),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: Text(
+                  file.name,
+                  style: AppTextStyles.micro.copyWith(fontWeight: FontWeight.bold),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                ),
+              ),
+              const SizedBox(height: 2),
               Text(
                 file.sizeStr,
                 style: AppTextStyles.nano.copyWith(color: AppColors.textTertiary),
@@ -343,5 +500,110 @@ class FilesView extends GetView<FilesController> {
         ),
       );
     });
+  }
+
+  Widget _buildThumbnail(ScannedFile file) {
+    if (file.thumbnailPath != null) {
+      return Image.file(
+        File(file.thumbnailPath!),
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) => _buildFallbackIcon(file),
+      );
+    }
+    return _buildFallbackIcon(file);
+  }
+
+  Widget _buildFallbackIcon(ScannedFile file) {
+    IconData icon;
+    Color color;
+    switch (file.category) {
+      case FileCategory.videos:
+        icon = LucideIcons.video;
+        color = const Color(0xFF3b82f6);
+        break;
+      case FileCategory.audio:
+        icon = LucideIcons.music;
+        color = const Color(0xFF10b981);
+        break;
+      case FileCategory.images:
+        icon = LucideIcons.image;
+        color = const Color(0xFFf59e0b);
+        break;
+      case FileCategory.docs:
+        icon = LucideIcons.fileText;
+        color = const Color(0xFFef4444);
+        break;
+      default:
+        icon = LucideIcons.folder;
+        color = AppColors.violet;
+    }
+    return Container(
+      color: color.withOpacity(0.1),
+      child: Center(
+        child: Icon(icon, color: color, size: 24),
+      ),
+    );
+  }
+
+  void _showImagePreview(BuildContext context, ScannedFile file) {
+    Get.dialog(
+      Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: EdgeInsets.zero,
+        child: Stack(
+          children: [
+            // Background blur
+            Positioned.fill(
+              child: GestureDetector(
+                onTap: () => Get.back(),
+                child: Container(color: Colors.black.withOpacity(0.9)),
+              ),
+            ),
+            // Image with zoom
+            Center(
+              child: InteractiveViewer(
+                minScale: 0.5,
+                maxScale: 4.0,
+                child: Hero(
+                  tag: file.path,
+                  child: Image.file(
+                    File(file.path),
+                    fit: BoxFit.contain,
+                  ),
+                ),
+              ),
+            ),
+            // UI elements
+            Positioned(
+              top: 40,
+              left: 20,
+              right: 20,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  IconButton(
+                    icon: const Icon(LucideIcons.x, color: Colors.white),
+                    onPressed: () => Get.back(),
+                  ),
+                  Expanded(
+                    child: Text(
+                      file.name,
+                      style: AppTextStyles.body.copyWith(color: Colors.white),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(LucideIcons.share2, color: Colors.white),
+                    onPressed: () {},
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

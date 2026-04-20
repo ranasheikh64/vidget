@@ -14,6 +14,8 @@ class FilesController extends GetxController {
   final selectedPaths = <String>[].obs;
   final sortBy = 'date'.obs;
   final showSortMenu = false.obs;
+  final featuredFiles = <ScannedFile>[].obs;
+
 
   @override
   void onInit() {
@@ -21,9 +23,21 @@ class FilesController extends GetxController {
     refreshFiles();
   }
 
-  void refreshFiles() {
-    _scanner.scanStorage();
+  Future<void> refreshFiles() async {
+    await _scanner.scanStorage();
+    _updateFeatured();
   }
+
+  void _updateFeatured() {
+    // Get the 5 most recent videos or images for the banner
+    final media = _scanner.allFiles
+        .where((f) => f.category == FileCategory.videos || f.category == FileCategory.images)
+        .toList();
+    
+    media.sort((a, b) => b.modified.compareTo(a.modified));
+    featuredFiles.assignAll(media.take(5).toList());
+  }
+
 
   List<Map<String, dynamic>> get categories {
     final files = _scanner.allFiles;
@@ -59,8 +73,10 @@ class FilesController extends GetxController {
   void playFile(ScannedFile file) {
     if (file.category == FileCategory.audio || file.category == FileCategory.videos) {
       _playback.playFile(file.path, file.name);
+    } else if (file.category == FileCategory.images) {
+      // Handled by the view's preview dialog for now
+      // but we could pass state here if needed
     }
-    // For images or others, we can implement openers later
   }
 
   void toggleSelect(String path) {

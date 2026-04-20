@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:lucide_icons/lucide_icons.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:vidget/app/routes/app_routes.dart';
 import '../controllers/main_nav_controller.dart';
 import '../../../core/theme/app_colors.dart';
@@ -50,6 +51,70 @@ class MainNavigationView extends GetView<MainNavController> {
             top: 0,
             child: GlobalPlayerView(),
           ),
+
+          // Global Download Progress Bar (Above Bottom Nav)
+          Positioned(
+            left: 16,
+            right: 16,
+            bottom: 90, // Positioned above the bottom navigation
+            child: Obx(() {
+              final service = Get.find<DownloadService>();
+              if (!service.isGlobalProgressVisible.value) return const SizedBox.shrink();
+              
+              return Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                decoration: BoxDecoration(
+                  color: AppColors.bgCard.withOpacity(0.9),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: AppColors.violet.withOpacity(0.3)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.3),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(LucideIcons.downloadCloud, size: 16, color: AppColors.violetLight),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            service.lastActiveTitle.value,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: AppTextStyles.bodySmall.copyWith(fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Text(
+                          "${service.lastActiveProgress.value.toInt()}%",
+                          style: AppTextStyles.bodySmall.copyWith(
+                            color: AppColors.violetLight,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(4),
+                      child: LinearProgressIndicator(
+                        value: service.lastActiveProgress.value / 100,
+                        backgroundColor: Colors.white.withOpacity(0.05),
+                        valueColor: const AlwaysStoppedAnimation<Color>(AppColors.violet),
+                        minHeight: 4,
+                      ),
+                    ),
+                  ],
+                ),
+              ).animate().slideY(begin: 1, end: 0).fadeIn();
+            }),
+          ),
         ],
       ),
       bottomNavigationBar: Container(
@@ -70,7 +135,7 @@ class MainNavigationView extends GetView<MainNavController> {
                   _navItem(0, LucideIcons.home, "Home"),
                   Obx(() {
                     final service = Get.find<DownloadService>();
-                    final count = service.activeDownloads.length + service.queue.length;
+                    final count = service.activeDownloads.length;
                     return _navItem(1, LucideIcons.download, "Downloads", 
                       badge: count > 0 ? count.toString() : null);
                   }),

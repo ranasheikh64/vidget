@@ -244,7 +244,7 @@ class DownloadsView extends GetView<DownloadsController> {
                     ),
                   ],
                 ),
-                Text("${item.progress.toInt()}%", style: AppTextStyles.micro.copyWith(color: AppColors.textSecondary)),
+                Text("${item.progress.toInt()}%", style: AppTextStyles.caption.copyWith(color: AppColors.textPrimary, fontWeight: FontWeight.bold)),
               ],
             ),
             const SizedBox(height: 8),

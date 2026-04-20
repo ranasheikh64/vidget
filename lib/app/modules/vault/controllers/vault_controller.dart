@@ -396,6 +396,7 @@ class VaultController extends GetxController {
       print("[Vault] Handing over to Global Player...");
       Get.find<GlobalPlayerController>().playVideo(VideoItem(
         id: DateTime.now().millisecondsSinceEpoch,
+        idString: tempPath,
         title: file.name,
         videoUrl: tempPath,
         thumb: '🔒',

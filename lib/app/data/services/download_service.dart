@@ -1,173 +1,258 @@
 import 'dart:io';
-import 'package:dio/dio.dart';
+import 'package:background_downloader/background_downloader.dart';
+import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:get/get.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:path/path.dart' as p;
+import 'package:vidget/app/data/services/download_handler_task.dart';
 import 'package:vidget/app/data/models/download_item_model.dart';
 import 'package:vidget/app/data/models/video_item_model.dart';
+import 'package:vidget/app/data/models/video_format_model.dart';
 
 class DownloadService extends GetxService {
-  final Dio _dio = Dio();
-  final int _maxConcurrent = 5;
-  
   final activeDownloads = <int, DownloadItem>{}.obs;
-  final queue = <DownloadItem>[].obs;
+  final taskIdToVideoId = <String, int>{};
   final completedDownloads = <DownloadItem>[].obs;
   final failedDownloads = <DownloadItem>[].obs;
+  
+  // Global visibility observables
+  final lastActiveProgress = 0.0.obs;
+  final lastActiveTitle = "".obs;
+  final isGlobalProgressVisible = false.obs;
+
+  @override
+  void onInit() {
+    super.onInit();
+    _setupDownloader();
+    _initForegroundTask();
+  }
 
   Future<DownloadService> init() async {
     return this;
   }
 
-  Future<void> startDownload(VideoItem video) async {
-    // 1. Check Permissions
+  void _setupDownloader() {
+    // Keep background_downloader for non-streaming links if necessary
+    FileDownloader().updates.listen((update) {
+      if (update is TaskStatusUpdate) {
+        _handleStatusUpdate(update.task, update.status);
+      } else if (update is TaskProgressUpdate) {
+        _handleProgressUpdate(update.task, update.progress);
+      }
+    });
+  }
+
+  void _initForegroundTask() {
+    FlutterForegroundTask.init(
+      androidNotificationOptions: AndroidNotificationOptions(
+        channelId: 'vidget_download_channel',
+        channelName: 'VidGet Downloads',
+        channelDescription: 'Foreground service for robust video downloading',
+        channelImportance: NotificationChannelImportance.LOW,
+        priority: NotificationPriority.LOW,
+        iconData: const NotificationIconData(
+          resType: ResourceType.mipmap,
+          resPrefix: ResourcePrefix.ic,
+          name: 'launcher',
+        ),
+      ),
+      iosNotificationOptions: const IOSNotificationOptions(
+        showNotification: true,
+        playSound: false,
+      ),
+      foregroundTaskOptions: const ForegroundTaskOptions(
+        interval: 5000,
+        isOnceEvent: false,
+        autoRunOnBoot: false,
+        allowWakeLock: true,
+        allowWifiLock: true,
+      ),
+    );
+
+    // Register port listener for updates from background
+    FlutterForegroundTask.receivePort?.listen(_onReceiveTaskData);
+  }
+
+  void _onReceiveTaskData(dynamic data) {
+    if (data is Map<dynamic, dynamic>) {
+      final int videoId = data['video_id'];
+      final double progress = (data['progress'] as num).toDouble();
+      final String status = data['status'];
+      final String title = data['title'];
+
+      final currentItem = activeDownloads[videoId];
+      if (currentItem == null) return;
+
+      DownloadStatus appStatus = DownloadStatus.downloading;
+      if (status == 'completed') appStatus = DownloadStatus.completed;
+      if (status == 'failed') appStatus = DownloadStatus.failed;
+
+      final updated = currentItem.copyWith(
+        progress: progress,
+        status: appStatus,
+      );
+
+      if (appStatus == DownloadStatus.completed) {
+        completedDownloads.add(updated);
+        activeDownloads.remove(videoId);
+        isGlobalProgressVisible.value = false;
+        Get.snackbar("Download Complete", title, snackPosition: SnackPosition.BOTTOM);
+        _maybeStopForegroundService();
+      } else if (appStatus == DownloadStatus.failed) {
+        failedDownloads.add(updated);
+        activeDownloads.remove(videoId);
+        isGlobalProgressVisible.value = false;
+        Get.snackbar("Download Failed", title, snackPosition: SnackPosition.BOTTOM);
+        _maybeStopForegroundService();
+      } else {
+        activeDownloads[videoId] = updated;
+        lastActiveProgress.value = progress;
+        lastActiveTitle.value = title;
+        isGlobalProgressVisible.value = true;
+      }
+      
+      activeDownloads.refresh();
+    }
+  }
+
+  void _maybeStopForegroundService() {
+    if (activeDownloads.isEmpty) {
+      FlutterForegroundTask.stopService();
+    }
+  }
+
+  void _handleStatusUpdate(Task task, TaskStatus status) {
+    // (Legacy handler for non-streaming tasks)
+    final videoId = taskIdToVideoId[task.taskId];
+    if (videoId == null) return;
+    _handleGenericStatusUpdate(videoId, status, task.taskId);
+  }
+
+  void _handleProgressUpdate(Task task, double progress) {
+    // (Legacy handler for non-streaming tasks)
+    final videoId = taskIdToVideoId[task.taskId];
+    if (videoId == null) return;
+    final progressValue = (progress >= 0 ? progress * 100 : 0).toDouble();
+    _updateProgress(videoId, progressValue);
+  }
+
+  void _handleGenericStatusUpdate(int videoId, TaskStatus status, String taskId) {
+    final currentItem = activeDownloads[videoId];
+    if (currentItem == null) return;
+
+    DownloadStatus appStatus = DownloadStatus.downloading;
+    switch (status) {
+      case TaskStatus.enqueued: appStatus = DownloadStatus.queued; break;
+      case TaskStatus.complete: appStatus = DownloadStatus.completed; break;
+      case TaskStatus.failed:
+      case TaskStatus.canceled:
+      case TaskStatus.notFound: appStatus = DownloadStatus.failed; break;
+      default: appStatus = DownloadStatus.downloading;
+    }
+
+    final updated = currentItem.copyWith(status: appStatus);
+    if (appStatus == DownloadStatus.completed || appStatus == DownloadStatus.failed) {
+      if (appStatus == DownloadStatus.completed) completedDownloads.add(updated);
+      else failedDownloads.add(updated);
+      activeDownloads.remove(videoId);
+      taskIdToVideoId.remove(taskId);
+      isGlobalProgressVisible.value = false;
+    } else {
+      activeDownloads[videoId] = updated;
+    }
+    activeDownloads.refresh();
+  }
+
+  void _updateProgress(int videoId, double progress) {
+    final currentItem = activeDownloads[videoId];
+    if (currentItem == null) return;
+    final updated = currentItem.copyWith(progress: progress, status: DownloadStatus.downloading);
+    activeDownloads[videoId] = updated;
+    lastActiveProgress.value = progress;
+    lastActiveTitle.value = updated.title;
+    isGlobalProgressVisible.value = true;
+    activeDownloads.refresh();
+  }
+
+  Future<void> startDownload(VideoItem video, VideoFormat format) async {
     if (!await _checkPermission()) {
       Get.snackbar("Permission Denied", "Storage access is required to download videos.");
       return;
     }
 
-    final id = video.id;
-    if (activeDownloads.containsKey(id)) {
-      Get.snackbar("Already Downloading", "This video is already in your active list.");
-      return;
-    }
+    final String fileName = "${video.title.replaceAll(RegExp(r'[^\w\s\-]'), '_')}_${DateTime.now().millisecondsSinceEpoch}.${format.extension}";
+    final String savePath = await _getSavePath(fileName);
 
-    // 2. Prepare Download Item
-    final newItem = DownloadItem(
-      id: id,
+    // Register active download in UI
+    activeDownloads[video.id] = DownloadItem(
+      id: video.id,
       title: video.title,
       site: video.channel,
-      format: video.format ?? "MP4",
-      quality: video.quality,
-      size: "Calculating...",
+      format: format.extension.toUpperCase(),
+      quality: format.quality,
+      size: format.sizeLabel,
       progress: 0,
-      speed: "0 KB/s",
-      eta: "--",
+      speed: "—",
+      eta: "—",
       status: DownloadStatus.queued,
-      icon: video.thumb.isNotEmpty ? "🎬" : "📥",
-      url: video.videoUrl,
+      icon: "📥",
+      url: format.url,
     );
+    activeDownloads.refresh();
 
-    // 3. Add to Queue or Start
-    if (activeDownloads.length < _maxConcurrent) {
-      _executeDownload(newItem);
+    // Save download info to shared data (v6 path)
+    await FlutterForegroundTask.saveData(key: 'video_url', value: 'https://www.youtube.com/watch?v=${video.idString}');
+    await FlutterForegroundTask.saveData(key: 'save_path', value: savePath);
+    await FlutterForegroundTask.saveData(key: 'title', value: video.title);
+    await FlutterForegroundTask.saveData(key: 'video_id', value: video.id);
+    await FlutterForegroundTask.saveData(key: 'itag', value: format.tag);
+
+    // Launch robust streaming downloader via Foreground Service
+    if (!await FlutterForegroundTask.isRunningService) {
+      await FlutterForegroundTask.startService(
+        notificationTitle: 'Initializing Download...',
+        notificationText: video.title,
+        callback: startCallback,
+      );
+    }
+
+    Get.snackbar("Download Started", video.title, snackPosition: SnackPosition.BOTTOM);
+  }
+
+  Future<String> _getSavePath(String fileName) async {
+    final dir = await getPublicDownloadsDir();
+    return "${dir.path}/$fileName";
+  }
+
+  Future<Directory> getPublicDownloadsDir() async {
+    if (Platform.isAndroid) {
+      final dir = Directory('/storage/emulated/0/Download/VidGet');
+      if (!await dir.exists()) await dir.create(recursive: true);
+      return dir;
     } else {
-      queue.add(newItem);
-      Get.snackbar("Queued", "Reached 5 download limit. Item added to queue.");
-    }
-  }
-
-  Future<void> _executeDownload(DownloadItem item) async {
-    activeDownloads[item.id] = item.copyWith(status: DownloadStatus.downloading);
-    
-    try {
-      final savePath = await _getPublicSavePath(item.title, item.format);
-      
-      DateTime startTime = DateTime.now();
-
-      await _dio.download(
-        item.url!,
-        savePath,
-        onReceiveProgress: (received, total) {
-          if (total != -1) {
-            final progress = (received / total) * 100;
-            
-            // Calculate Speed & ETA every second approximate
-            final now = DateTime.now();
-            final duration = now.difference(startTime).inSeconds;
-            
-            String speedStr = "—";
-            String etaStr = "—";
-
-            if (duration > 0) {
-              final bytesPerSec = received / duration;
-              speedStr = _formatSpeed(bytesPerSec);
-              
-              final remainingBytes = total - received;
-              final secondsLeft = remainingBytes / bytesPerSec;
-              etaStr = _formatETA(secondsLeft.toInt());
-            }
-
-            activeDownloads[item.id] = activeDownloads[item.id]!.copyWith(
-              progress: progress,
-              speed: speedStr,
-              eta: etaStr,
-              size: "${(total / (1024 * 1024)).toStringAsFixed(1)} MB",
-            );
-          }
-        },
-      );
-
-      // Successfully Completed
-      final completed = activeDownloads[item.id]!.copyWith(
-        status: DownloadStatus.completed,
-        progress: 100,
-        filePath: savePath,
-      );
-      
-      completedDownloads.add(completed);
-      activeDownloads.remove(item.id);
-      _checkQueue();
-
-    } catch (e) {
-      print("[DownloadService] Error: $e");
-      final failed = (activeDownloads[item.id] ?? item).copyWith(
-        status: DownloadStatus.failed,
-        errorMessage: e.toString()
-      );
-      failedDownloads.add(failed);
-      activeDownloads.remove(item.id);
-      _checkQueue();
-    }
-  }
-
-  void _checkQueue() {
-    if (queue.isNotEmpty && activeDownloads.length < _maxConcurrent) {
-      final next = queue.removeAt(0);
-      _executeDownload(next);
+      // Fallback for iOS or other
+      final dir = await getApplicationDocumentsDirectory();
+      return dir;
     }
   }
 
   Future<bool> _checkPermission() async {
     if (Platform.isAndroid) {
+      await Permission.notification.request();
+      
+      if (await Permission.manageExternalStorage.request().isGranted) return true;
+      
       final status = await Permission.storage.request();
       if (status.isGranted) return true;
       
-      // Handle Android 13+ (Photos/Videos)
       final statusVideos = await Permission.videos.request();
-      return statusVideos.isGranted;
+      if (statusVideos.isGranted) return true;
+
+      final statusPhotos = await Permission.photos.request();
+      if (statusPhotos.isGranted) return true;
+      
+      return false;
     }
     return true;
-  }
-
-  Future<String> _getPublicSavePath(String title, String format) async {
-    Directory? dir;
-    if (Platform.isAndroid) {
-      dir = Directory('/storage/emulated/0/Download/VidGet');
-    } else {
-      dir = await getDownloadsDirectory();
-    }
-
-    if (dir != null && !await dir.exists()) {
-      await dir.create(recursive: true);
-    }
-
-    // Clean filename
-    final safeTitle = title.replaceAll(RegExp(r'[^\w\s\-]'), '_');
-    return p.join(dir!.path, "${safeTitle}_${DateTime.now().millisecondsSinceEpoch}.$format");
-  }
-
-  String _formatSpeed(double bytesPerSec) {
-    if (bytesPerSec < 1024) return "${bytesPerSec.toStringAsFixed(0)} B/s";
-    if (bytesPerSec < 1024 * 1024) return "${(bytesPerSec / 1024).toStringAsFixed(1)} KB/s";
-    return "${(bytesPerSec / (1024 * 1024)).toStringAsFixed(1)} MB/s";
-  }
-
-  String _formatETA(int seconds) {
-    if (seconds < 60) return "${seconds}s";
-    final minutes = (seconds / 60).floor();
-    final remainingSec = seconds % 60;
-    return "${minutes}m ${remainingSec}s";
   }
 }

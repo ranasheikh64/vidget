@@ -11,9 +11,13 @@ import 'app/data/services/vault_auth_service.dart';
 
 import 'app/data/services/file_scanner_service.dart';
 import 'app/data/services/media_playback_service.dart';
+import 'package:flutter_foreground_task/flutter_foreground_task.dart';
+
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+
   
   // Initialize Storage
   await GetStorage.init();
@@ -22,13 +26,15 @@ void main() async {
   await initServices();
 
   runApp(
-    GetMaterialApp(
-      title: "VidGet",
-      initialRoute: AppPages.INITIAL,
-      getPages: AppPages.routes,
-      theme: AppTheme.dark,
-      debugShowCheckedModeBanner: false,
-      defaultTransition: Transition.cupertino,
+    WithForegroundTask(
+      child: GetMaterialApp(
+        title: "VidGet",
+        initialRoute: AppPages.INITIAL,
+        getPages: AppPages.routes,
+        theme: AppTheme.dark,
+        debugShowCheckedModeBanner: false,
+        defaultTransition: Transition.cupertino,
+      ),
     ),
   );
 }

@@ -9,7 +9,6 @@ class DownloadsController extends GetxController {
   RxList<DownloadItem> get allDownloads {
     final list = <DownloadItem>[];
     list.addAll(_downloadService.activeDownloads.values);
-    list.addAll(_downloadService.queue);
     list.addAll(_downloadService.completedDownloads);
     list.addAll(_downloadService.failedDownloads);
     return list.obs;
@@ -31,9 +30,8 @@ class DownloadsController extends GetxController {
     _downloadService.activeDownloads.remove(id);
     _downloadService.completedDownloads.removeWhere((d) => d.id == id);
     _downloadService.failedDownloads.removeWhere((d) => d.id == id);
-    _downloadService.queue.removeWhere((d) => d.id == id);
   }
 
-  int get activeCount => _downloadService.activeDownloads.length + _downloadService.queue.length;
+  int get activeCount => _downloadService.activeDownloads.length;
   int get completedCount => _downloadService.completedDownloads.length;
 }

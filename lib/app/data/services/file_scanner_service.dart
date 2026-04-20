@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:video_thumbnail/video_thumbnail.dart';
 
 enum FileCategory { all, videos, audio, images, docs }
 
@@ -13,6 +14,7 @@ class ScannedFile {
   final FileCategory category;
   final int size;
   final DateTime modified;
+  final String? thumbnailPath;
 
   ScannedFile({
     required this.path,
@@ -21,6 +23,7 @@ class ScannedFile {
     required this.category,
     required this.size,
     required this.modified,
+    this.thumbnailPath,
   });
 
   String get sizeStr {
@@ -136,6 +139,17 @@ class FileScannerService extends GetxService {
           
           if (category != null) {
             final stat = await entity.stat();
+            String? thumb;
+            
+            // For images, the file itself is the thumbnail
+            if (category == FileCategory.images) {
+              thumb = entity.path;
+            } else if (category == FileCategory.videos) {
+              // Videos will have thumbnails generated asynchronously or on-demand
+              // For now, we'll try to generate it during scan for a better first impression
+              thumb = await _generateVideoThumbnail(entity.path);
+            }
+
             allFiles.add(ScannedFile(
               path: entity.path,
               name: p.basename(entity.path),
@@ -143,6 +157,7 @@ class FileScannerService extends GetxService {
               category: category,
               size: stat.size,
               modified: stat.modified,
+              thumbnailPath: thumb,
             ));
           }
         } else if (entity is Directory) {
@@ -155,6 +170,23 @@ class FileScannerService extends GetxService {
       }
     } catch (e) {
       // Access denied for some folders, just skip
+    }
+  }
+
+  Future<String?> _generateVideoThumbnail(String videoPath) async {
+    try {
+      final tempDir = await getTemporaryDirectory();
+      final thumbPath = await VideoThumbnail.thumbnailFile(
+        video: videoPath,
+        thumbnailPath: tempDir.path,
+        imageFormat: ImageFormat.JPEG,
+        maxWidth: 250, 
+        quality: 75,
+      );
+      return thumbPath;
+    } catch (e) {
+      print("Thumbnail Error: $e");
+      return null;
     }
   }
 }

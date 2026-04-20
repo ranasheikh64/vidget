@@ -4,15 +4,18 @@ import 'package:dio/dio.dart';
 import 'package:html/parser.dart' as html;
 import 'package:flutter/foundation.dart';
 import '../models/video_item_model.dart';
+import '../models/video_format_model.dart';
 
 class ExtractorService extends GetxService {
   final _yt = yt.YoutubeExplode();
   final _dio = Dio();
   
-  // Pagination state
+  // Pagination & Cache
   yt.VideoSearchList? _currentSearchList;
   int _currentImagePage = 1;
   String _lastImageQuery = "";
+  final Map<String, List<VideoFormat>> _formatCache = {};
+
 
   @override
   void onClose() {
@@ -26,7 +29,7 @@ class ExtractorService extends GetxService {
     try {
       _currentSearchList = await _yt.search.getVideos(query);
       
-      // Mapping is fast, no need for isolate if it causes type issues with foreign classes
+      // Revert compute to direct mapping because YouTube objects contain unsendable internal state
       return _mapYoutubeResults(_currentSearchList!);
     } catch (e) {
       print("[Scraper] Search error: $e");
@@ -49,7 +52,7 @@ class ExtractorService extends GetxService {
     }
   }
 
-  // Map YouTube results directly (safe and fast on main thread)
+  // Map YouTube results directly (Isolates crash with SearchList internal objects)
   List<VideoItem> _mapYoutubeResults(Iterable<yt.Video> list) {
     return list.map((video) => VideoItem(
       id: video.id.value.hashCode + DateTime.now().microsecondsSinceEpoch,
@@ -60,6 +63,7 @@ class ExtractorService extends GetxService {
       quality: "HD",
       thumb: video.thumbnails.highResUrl,
       videoUrl: "https://www.youtube.com/watch?v=${video.id.value}",
+      idString: video.id.value,
       isLive: video.isLive,
     )).toList();
   }
@@ -135,6 +139,7 @@ class ExtractorService extends GetxService {
           quality: "4K",
           thumb: src,
           videoUrl: src,
+          idString: src,
         ));
       }
     }
@@ -143,6 +148,86 @@ class ExtractorService extends GetxService {
 
   Future<List<VideoItem>> fetchMoreImages() async {
     return await fetchImages(_lastImageQuery, page: _currentImagePage + 1);
+  }
+
+  // Video/Formats Extraction Logic
+  Future<List<VideoFormat>> getAvailableFormats(String url) async {
+    if (_formatCache.containsKey(url)) {
+      print("[ExtractorService] Returning cached formats for: $url");
+      return _formatCache[url]!;
+    }
+
+    List<VideoFormat> formats = [];
+    if (url.contains('youtube.com') || url.contains('youtu.be')) {
+      formats = await _getYoutubeFormats(url);
+    } else {
+      formats = await _getGenericFormats(url);
+    }
+
+    if (formats.isNotEmpty) {
+      _formatCache[url] = formats;
+    }
+    return formats;
+  }
+
+  bool hasCachedFormats(String url) => _formatCache.containsKey(url);
+
+
+  Future<List<VideoFormat>> _getYoutubeFormats(String url) async {
+    try {
+      final videoId = yt.VideoId.parseVideoId(url);
+      if (videoId == null) return [];
+      
+      final manifest = await _yt.videos.streamsClient.getManifest(videoId);
+      List<VideoFormat> formats = [];
+
+      // 1. Muxed Streams (Video + Audio) - Best for simple download
+      for (var stream in manifest.muxed) {
+        formats.add(VideoFormat(
+          quality: stream.videoQualityLabel,
+          extension: stream.container.name,
+          sizeBytes: stream.size.totalBytes,
+          url: stream.url.toString(),
+          isAudioOnly: false,
+          videoCodec: stream.videoCodec,
+          tag: stream.tag,
+        ));
+      }
+
+      // 2. Audio Only
+      final bestAudio = manifest.audioOnly.withHighestBitrate();
+      formats.add(VideoFormat(
+        quality: "Audio (High Quality)",
+        extension: bestAudio.container.name,
+        sizeBytes: bestAudio.size.totalBytes,
+        url: bestAudio.url.toString(),
+        isAudioOnly: true,
+        audioCodec: bestAudio.audioCodec,
+        tag: bestAudio.tag,
+      ));
+
+      return formats;
+    } catch (e) {
+      print("[ExtractorService] YT Formats error: $e");
+      return [];
+    }
+  }
+
+  Future<List<VideoFormat>> _getGenericFormats(String url) async {
+    // For non-youtube, we usually only have one URL detected from meta tags
+    final item = await extract(url);
+    if (item != null && item.videoUrl != null) {
+      return [
+        VideoFormat(
+          quality: item.quality,
+          extension: "mp4",
+          url: item.videoUrl!,
+          isAudioOnly: false,
+          tag: 0,
+        )
+      ];
+    }
+    return [];
   }
 
   // URL Extraction Logic
@@ -169,6 +254,7 @@ class ExtractorService extends GetxService {
         quality: streamInfo.videoQualityLabel,
         thumb: video.thumbnails.highResUrl,
         videoUrl: streamInfo.url.toString(),
+        idString: video.id.value,
         isLive: video.isLive,
       );
     } catch (e) {
@@ -239,6 +325,7 @@ class ExtractorService extends GetxService {
       quality: "HD",
       thumb: thumb,
       videoUrl: videoUrl,
+      idString: videoUrl ?? url,
     );
   }
 }
