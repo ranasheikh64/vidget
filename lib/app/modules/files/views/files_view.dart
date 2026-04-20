@@ -26,13 +26,15 @@ class FilesView extends GetView<FilesController> {
               _buildCategoryCards(),
               _buildHeroBanner(),
               _buildSearchBar(),
-              Obx(() => controller.isScanning 
-                ? const LinearProgressIndicator(
-                    backgroundColor: Colors.transparent, 
-                    color: AppColors.violet,
-                    minHeight: 2,
-                  ) 
-                : const SizedBox(height: 2)),
+              Obx(
+                () => controller.isScanning
+                    ? const LinearProgressIndicator(
+                        backgroundColor: Colors.transparent,
+                        color: AppColors.violet,
+                        minHeight: 2,
+                      )
+                    : const SizedBox(height: 2),
+              ),
               Expanded(child: _buildFileList()),
             ],
           ),
@@ -129,15 +131,21 @@ class FilesView extends GetView<FilesController> {
             final isActive = controller.activeCategory.value == cat['id'];
             final color = cat['color'] as Color;
             return GestureDetector(
-              onTap: () => controller.activeCategory.value = cat['id'] as String,
+              onTap: () =>
+                  controller.activeCategory.value = cat['id'] as String,
               child: Container(
                 margin: const EdgeInsets.only(right: 10),
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
                 decoration: BoxDecoration(
                   color: isActive ? color.withOpacity(0.15) : AppColors.bgCard,
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                    color: isActive ? color.withOpacity(0.4) : AppColors.borderSubtle,
+                    color: isActive
+                        ? color.withOpacity(0.4)
+                        : AppColors.borderSubtle,
                   ),
                 ),
                 child: Row(
@@ -152,7 +160,9 @@ class FilesView extends GetView<FilesController> {
                           cat['label'] as String,
                           style: AppTextStyles.micro.copyWith(
                             fontWeight: FontWeight.bold,
-                            color: isActive ? Colors.white : AppColors.textSecondary,
+                            color: isActive
+                                ? Colors.white
+                                : AppColors.textSecondary,
                           ),
                         ),
                         Text(
@@ -176,7 +186,7 @@ class FilesView extends GetView<FilesController> {
   Widget _buildHeroBanner() {
     return Obx(() {
       if (controller.featuredFiles.isEmpty) return const SizedBox.shrink();
-      
+
       return Container(
         height: 180,
         margin: const EdgeInsets.symmetric(vertical: 16),
@@ -188,119 +198,131 @@ class FilesView extends GetView<FilesController> {
           itemBuilder: (context, index) {
             final file = controller.featuredFiles[index];
             return GestureDetector(
-              onTap: () => controller.playFile(file),
-              child: Container(
-                width: 280,
-                margin: const EdgeInsets.only(right: 16),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(24),
-                  image: file.thumbnailPath != null
-                      ? DecorationImage(
-                          image: FileImage(File(file.thumbnailPath!)),
-                          fit: BoxFit.cover,
-                          colorFilter: ColorFilter.mode(
-                            Colors.black.withOpacity(0.3),
-                            BlendMode.darken,
-                          ),
-                        )
-                      : null,
-                  color: AppColors.bgCard,
-                  boxShadow: [
-                    BoxShadow(
-                      color: AppColors.violet.withOpacity(0.2),
-                      blurRadius: 10,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: Stack(
-                  children: [
-                    if (file.thumbnailPath == null)
-                      Center(
-                        child: Icon(
-                          file.category == FileCategory.videos
-                              ? LucideIcons.video
-                              : LucideIcons.image,
-                          size: 40,
-                          color: AppColors.violet.withOpacity(0.5),
-                        ),
+              onTap: () {
+                if (file.category == FileCategory.images) {
+                  _showImagePreview(context, file);
+                } else {
+                  controller.playFile(file);
+                }
+
+                Container(
+                  width: 280,
+                  margin: const EdgeInsets.only(right: 16),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(24),
+                    image: file.thumbnailPath != null
+                        ? DecorationImage(
+                            image: FileImage(File(file.thumbnailPath!)),
+                            fit: BoxFit.cover,
+                            colorFilter: ColorFilter.mode(
+                              Colors.black.withOpacity(0.3),
+                              BlendMode.darken,
+                            ),
+                          )
+                        : null,
+                    color: AppColors.bgCard,
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppColors.violet.withOpacity(0.2),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
                       ),
-                    Positioned(
-                      bottom: 0,
-                      left: 0,
-                      right: 0,
-                      child: Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            colors: [
-                              Colors.transparent,
-                              Colors.black.withOpacity(0.8),
+                    ],
+                  ),
+                  child: Stack(
+                    children: [
+                      if (file.thumbnailPath == null)
+                        Center(
+                          child: Icon(
+                            file.category == FileCategory.videos
+                                ? LucideIcons.video
+                                : LucideIcons.image,
+                            size: 40,
+                            color: AppColors.violet.withOpacity(0.5),
+                          ),
+                        ),
+                      Positioned(
+                        bottom: 0,
+                        left: 0,
+                        right: 0,
+                        child: Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [
+                                Colors.transparent,
+                                Colors.black.withOpacity(0.8),
+                              ],
+                            ),
+                            borderRadius: const BorderRadius.only(
+                              bottomLeft: Radius.circular(24),
+                              bottomRight: Radius.circular(24),
+                            ),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                file.name,
+                                style: AppTextStyles.body.copyWith(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              Text(
+                                file.sizeStr,
+                                style: AppTextStyles.nano.copyWith(
+                                  color: Colors.white.withOpacity(0.7),
+                                ),
+                              ),
                             ],
                           ),
-                          borderRadius: const BorderRadius.only(
-                            bottomLeft: Radius.circular(24),
-                            bottomRight: Radius.circular(24),
+                        ),
+                      ),
+                      Positioned(
+                        top: 12,
+                        right: 12,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withOpacity(0.6),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                file.category == FileCategory.videos
+                                    ? LucideIcons.play
+                                    : LucideIcons.image,
+                                size: 10,
+                                color: Colors.white,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                file.category == FileCategory.videos
+                                    ? "VIDEO"
+                                    : "IMAGE",
+                                style: AppTextStyles.nano.copyWith(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              file.name,
-                              style: AppTextStyles.body.copyWith(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            Text(
-                              file.sizeStr,
-                              style: AppTextStyles.nano.copyWith(
-                                color: Colors.white.withOpacity(0.7),
-                              ),
-                            ),
-                          ],
-                        ),
                       ),
-                    ),
-                    Positioned(
-                      top: 12,
-                      right: 12,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withOpacity(0.6),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(
-                              file.category == FileCategory.videos
-                                  ? LucideIcons.play
-                                  : LucideIcons.image,
-                              size: 10,
-                              color: Colors.white,
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              file.category == FileCategory.videos ? "VIDEO" : "IMAGE",
-                              style: AppTextStyles.nano.copyWith(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+                    ],
+                  ),
+                );
+              },
             );
           },
         ),
@@ -321,7 +343,11 @@ class FilesView extends GetView<FilesController> {
         ),
         child: Row(
           children: [
-            const Icon(LucideIcons.search, size: 14, color: AppColors.textTertiary),
+            const Icon(
+              LucideIcons.search,
+              size: 14,
+              color: AppColors.textTertiary,
+            ),
             const SizedBox(width: 10),
             Expanded(
               child: TextField(
@@ -350,11 +376,17 @@ class FilesView extends GetView<FilesController> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(LucideIcons.folderX, size: 48, color: AppColors.textTertiary),
+              const Icon(
+                LucideIcons.folderX,
+                size: 48,
+                color: AppColors.textTertiary,
+              ),
               const SizedBox(height: 16),
               Text(
                 controller.isScanning ? "Scanning device..." : "No files found",
-                style: AppTextStyles.body.copyWith(color: AppColors.textSecondary),
+                style: AppTextStyles.body.copyWith(
+                  color: AppColors.textSecondary,
+                ),
               ),
             ],
           ),
@@ -387,16 +419,22 @@ class FilesView extends GetView<FilesController> {
     return Obx(() {
       final isSelected = controller.isSelected(file.path);
       return GestureDetector(
-        onTap: () => controller.isSelecting ? controller.toggleSelect(file.path) : controller.playFile(file),
+        onTap: () => controller.isSelecting
+            ? controller.toggleSelect(file.path)
+            : controller.playFile(file),
         onLongPress: () => controller.toggleSelect(file.path),
         child: Container(
           margin: const EdgeInsets.only(bottom: 8),
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: isSelected ? AppColors.violet.withOpacity(0.1) : AppColors.bgCard.withOpacity(0.5),
+            color: isSelected
+                ? AppColors.violet.withOpacity(0.1)
+                : AppColors.bgCard.withOpacity(0.5),
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
-              color: isSelected ? AppColors.violet.withOpacity(0.4) : AppColors.borderSubtle,
+              color: isSelected
+                  ? AppColors.violet.withOpacity(0.4)
+                  : AppColors.borderSubtle,
             ),
           ),
           child: Row(
@@ -405,12 +443,15 @@ class FilesView extends GetView<FilesController> {
                 Icon(
                   isSelected ? LucideIcons.checkCircle : LucideIcons.circle,
                   size: 18,
-                  color: isSelected ? AppColors.violetLight : AppColors.textTertiary,
+                  color: isSelected
+                      ? AppColors.violetLight
+                      : AppColors.textTertiary,
                 ),
                 const SizedBox(width: 12),
               ],
               Container(
-                width: 52, height: 52,
+                width: 52,
+                height: 52,
                 decoration: BoxDecoration(
                   color: Colors.white.withOpacity(0.05),
                   borderRadius: BorderRadius.circular(14),
@@ -427,20 +468,28 @@ class FilesView extends GetView<FilesController> {
                   children: [
                     Text(
                       file.name,
-                      style: AppTextStyles.bodySmall.copyWith(fontWeight: FontWeight.bold),
+                      style: AppTextStyles.bodySmall.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 4),
                     Text(
                       "${file.sizeStr} • ${DateFormat('MMM dd, yyyy').format(file.modified)}",
-                      style: AppTextStyles.nano.copyWith(color: AppColors.textTertiary),
+                      style: AppTextStyles.nano.copyWith(
+                        color: AppColors.textTertiary,
+                      ),
                     ),
                   ],
                 ),
               ),
               if (!controller.isSelecting)
-                const Icon(LucideIcons.chevronRight, size: 14, color: AppColors.textTertiary),
+                const Icon(
+                  LucideIcons.chevronRight,
+                  size: 14,
+                  color: AppColors.textTertiary,
+                ),
             ],
           ),
         ),
@@ -452,14 +501,20 @@ class FilesView extends GetView<FilesController> {
     return Obx(() {
       final isSelected = controller.isSelected(file.path);
       return GestureDetector(
-        onTap: () => controller.isSelecting ? controller.toggleSelect(file.path) : controller.playFile(file),
+        onTap: () => controller.isSelecting
+            ? controller.toggleSelect(file.path)
+            : controller.playFile(file),
         onLongPress: () => controller.toggleSelect(file.path),
         child: Container(
           decoration: BoxDecoration(
-            color: isSelected ? AppColors.violet.withOpacity(0.1) : AppColors.bgCard.withOpacity(0.5),
+            color: isSelected
+                ? AppColors.violet.withOpacity(0.1)
+                : AppColors.bgCard.withOpacity(0.5),
             borderRadius: BorderRadius.circular(20),
             border: Border.all(
-              color: isSelected ? AppColors.violet.withOpacity(0.4) : AppColors.borderSubtle,
+              color: isSelected
+                  ? AppColors.violet.withOpacity(0.4)
+                  : AppColors.borderSubtle,
             ),
           ),
           padding: const EdgeInsets.all(12),
@@ -484,7 +539,9 @@ class FilesView extends GetView<FilesController> {
                 padding: const EdgeInsets.symmetric(horizontal: 4),
                 child: Text(
                   file.name,
-                  style: AppTextStyles.micro.copyWith(fontWeight: FontWeight.bold),
+                  style: AppTextStyles.micro.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   textAlign: TextAlign.center,
@@ -493,7 +550,9 @@ class FilesView extends GetView<FilesController> {
               const SizedBox(height: 2),
               Text(
                 file.sizeStr,
-                style: AppTextStyles.nano.copyWith(color: AppColors.textTertiary),
+                style: AppTextStyles.nano.copyWith(
+                  color: AppColors.textTertiary,
+                ),
               ),
             ],
           ),
@@ -539,9 +598,7 @@ class FilesView extends GetView<FilesController> {
     }
     return Container(
       color: color.withOpacity(0.1),
-      child: Center(
-        child: Icon(icon, color: color, size: 24),
-      ),
+      child: Center(child: Icon(icon, color: color, size: 24)),
     );
   }
 
@@ -566,10 +623,7 @@ class FilesView extends GetView<FilesController> {
                 maxScale: 4.0,
                 child: Hero(
                   tag: file.path,
-                  child: Image.file(
-                    File(file.path),
-                    fit: BoxFit.contain,
-                  ),
+                  child: Image.file(File(file.path), fit: BoxFit.contain),
                 ),
               ),
             ),
